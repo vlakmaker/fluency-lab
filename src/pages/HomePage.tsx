@@ -1,53 +1,41 @@
 // src/pages/HomePage.tsx
-import { Box, Button, Heading, HStack, Text, VStack } from '@chakra-ui/react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Box, Button, Card, CardBody, Heading, HStack, Text, VStack } from '@chakra-ui/react'
+import { Link } from 'react-router-dom'
 import Navbar from '../components/NavBar'
 
 export default function HomePage() {
-    const navigate = useNavigate()
-
     return (
-        <Box
-            bg="background"
-            color="text"
-            minH="100vh"
-            px={4}
-        >
-            {/* Add Navbar at the top */}
+        <>
             <Navbar />
-
-            <VStack spacing={8} textAlign="center" mt={12}>
-                <Heading as="h1" size="2xl" color="primary">
-                    Welcome to Fluency Lab
-                </Heading>
-                <Text fontSize="lg" maxW="600px">
-                    Assess your AI fluency, explore your behavioral lens, and learn how to level up your skills — all in one interactive experience.
-                </Text>
-
-                <HStack spacing={4} justify="center">
-                    <Link to="/lab">
-                        <Button
-                            bg="accent"
-                            color="text"
-                            size="lg"
-                            px={8}
-                            _hover={{ bg: '#e6c200' }}
-                        >
-                            Enter the Lab
-                        </Button>
-                    </Link>
-                    <Button
-                        bg="playful"
-                        color="white"
-                        size="lg"
-                        px={8}
-                        _hover={{ bg: '#00a792' }}
-                        onClick={() => window.open('https://generalist.world', '_blank')}
-                    >
-                        Learn More
-                    </Button>
-                </HStack>
-            </VStack>
-        </Box>
+            <Box bg="background" minH="100vh" display="flex" alignItems="center" justifyContent="center" p={4}>
+                <Card w="100%" maxW="600px" p={6} boxShadow="md" borderRadius="md">
+                    <CardBody textAlign="center">
+                        <VStack spacing={4}>
+                            <Heading as="h1" size="xl" color="primary">
+                                Welcome to Fluency Lab
+                            </Heading>
+                            <Text fontSize="md" color="gray.600">
+                                Assess your AI fluency, explore your behavioral lens, and level up your skills in a hands-on, interactive way.
+                            </Text>
+                            <HStack spacing={4}>
+                                <Link to="/lab">
+                                    <Button bg="accent" color="black" _hover={{ bg: 'primary', color: 'white' }}>
+                                        Enter the Lab
+                                    </Button>
+                                </Link>
+                                <Button
+                                    bg="playful"
+                                    color="white"
+                                    _hover={{ bg: '#00a792' }}
+                                    onClick={() => window.open('https://generalist.world', '_blank')}
+                                >
+                                    Learn More
+                                </Button>
+                            </HStack>
+                        </VStack>
+                    </CardBody>
+                </Card>
+            </Box>
+        </>
     )
 }
