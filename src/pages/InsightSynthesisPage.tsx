@@ -1,6 +1,6 @@
 import { Box } from '@chakra-ui/react';
+import EngineContainer from '../components/EngineContainer';
 import Navbar from '../components/NavBar';
-import ExperimentForm from "../configs/ExperimentForm";
 import { experiments } from '../configs/experiments';
 
 export default function InsightSynthesisPage() {
@@ -19,7 +19,7 @@ export default function InsightSynthesisPage() {
                 px={4}
             >
                 <Box maxW="800px" w="100%">
-                    {config && <ExperimentForm config={config} />}
+                    {config && <EngineContainer config={config} />}
                 </Box>
             </Box>
         </>
