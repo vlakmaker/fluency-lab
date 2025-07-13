@@ -1,4 +1,3 @@
-// tsconfig.json
 {
     "compilerOptions": {
         "target": "ES2020",
@@ -9,9 +8,9 @@
             "DOM.Iterable"
         ],
         "module": "ESNext",
-        "skipLibCheck": true,
-        "moduleResolution": "bundler",
-        "allowImportingTsExtensions": true,
+        "moduleResolution": "bundler", // ✅ Vite-specific
+        "allowJs": false,
+        "checkJs": false,
         "resolveJsonModule": true,
         "isolatedModules": true,
         "noEmit": true,
@@ -23,10 +22,5 @@
     },
     "include": [
         "src"
-    ],
-    "references": [
-        {
-            "path": "./tsconfig.node.json"
-        }
     ]
 }

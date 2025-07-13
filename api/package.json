@@ -1,0 +1,10 @@
+{
+    "name": "fluency-lab-api",
+    "version": "1.0.0",
+    "private": true,
+    "devDependencies": {
+        "@types/node": "^24.0.13",
+        "@vercel/node": "^3.0.0",
+        "typescript": "^5.0.0"
+    }
+}
