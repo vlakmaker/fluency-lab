@@ -1,40 +1,35 @@
 // src/components/EngineContainer.tsx
 
+import { QuestionOutlineIcon } from '@chakra-ui/icons';
 import {
-    Alert,
-    AlertIcon,
-    Box,
-    Button,
-    Divider,
-    FormControl,
-    FormLabel,
+    Alert, AlertIcon, Box, Button, Divider, FormControl, FormLabel,
+    Icon,
     Input,
-    Select,
-    Spinner,
-    Stack,
-    Text,
-    Textarea
+    Select, Spinner, Stack,
+    Tab,
+    TabList,
+    TabPanel,
+    TabPanels,
+    Tabs,
+    Text, Textarea,
+    Tooltip
 } from '@chakra-ui/react';
 import { useEffect, useState } from 'react';
-import ExperimentForm from '../configs/ExperimentForm'; // Import the component to display challenges
+import ExperimentForm from '../configs//ExperimentForm';
 import { useApiKey } from '../context/ApiKeyContext';
-import type { ExperimentConfig } from '../data/experiments'; // Import the type for our config
+import type { ExperimentConfig } from '../data/experiments';
 
-// The list of models remains the same
+// --- UPDATED: Corrected model IDs and better model selection ---
 const MODEL_OPTIONS = [
-    { value: 'mistralai/mistral-7b-instruct', label: 'Mistral 7B Instruct (Recommended)' },
-    { value: 'openai/gpt-3.5-turbo', label: 'OpenAI GPT-3.5 Turbo' },
-    { value: 'google/gemini-pro', label: 'Google Gemini Pro' },
-    { value: 'anthropic/claude-2.1', label: 'Anthropic Claude 2.1' },
+    { value: 'mistralai/mistral-7b-instruct', label: 'Mistral 7B Instruct' },
+    { value: 'anthropic/claude-3-haiku', label: 'Anthropic Claude 3 Haiku (Fast & Capable)' },
+    { value: 'openai/gpt-4o', label: 'OpenAI: GPT-4o' },
+    { value: 'google/gemini-flash-1.5', label: 'Google Gemini Pro 1.5 Flash (Large Context)' },
 ];
 
-/**
- * This is now the main component for the entire lab experience.
- * It takes a `config` object to dynamically render the correct experiment.
- */
 export default function EngineContainer({ config }: { config: ExperimentConfig }) {
-    // All existing state logic remains the same
     const { apiKey } = useApiKey();
+    const [tabIndex, setTabIndex] = useState(0);
     const [selectedModel, setSelectedModel] = useState(MODEL_OPTIONS[0].value);
     const [rawPrompt, setRawPrompt] = useState('');
     const [directive, setDirective] = useState('');
@@ -47,18 +42,18 @@ export default function EngineContainer({ config }: { config: ExperimentConfig }
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
-    // --- NEW ---
-    // This effect runs when the component loads or when the `config` prop changes.
-    // It automatically sets the default prompt for the selected experiment.
     useEffect(() => {
         if (config && config.defaultPrompt) {
             setRawPrompt(config.defaultPrompt);
+            // Default to the Raw Editor if there's a pre-filled prompt
+            setTabIndex(1);
+        } else {
+            // Default to the Structured Builder for a blank slate
+            setTabIndex(0);
         }
-    }, [config]); // The dependency array ensures this runs when the experiment changes
+    }, [config]);
 
-    // The logic for building the prompt is unchanged
-    const buildPrompt = () => {
-        if (rawPrompt.trim()) return rawPrompt.trim();
+    const buildStructuredPrompt = () => {
         const parts = [
             role && `Act as ${role}.`,
             directive,
@@ -69,19 +64,29 @@ export default function EngineContainer({ config }: { config: ExperimentConfig }
         return parts.join('\n\n');
     };
 
-    const handlePreview = () => setPreview(buildPrompt());
+    const handleConvertToRaw = () => {
+        const structuredPrompt = buildStructuredPrompt();
+        setRawPrompt(structuredPrompt);
+        setTabIndex(1);
+    };
 
-    // The logic for calling the API is unchanged
+    const handlePreview = () => {
+        const promptToPreview = tabIndex === 0 ? buildStructuredPrompt() : rawPrompt;
+        setPreview(promptToPreview);
+    };
+
     const handleCastSpell = async () => {
-        const prompt = buildPrompt();
+        const prompt = tabIndex === 0 ? buildStructuredPrompt() : rawPrompt;
+
         if (!apiKey) {
             setError('API key is not set. Please provide it in the settings sidebar.');
             return;
         }
         if (!prompt) {
-            setError('Prompt is empty. Please fill out the directive or raw prompt field.');
+            setError('Prompt is empty. Please fill out the form or enter a raw prompt.');
             return;
         }
+
         setLoading(true);
         setError('');
         setResponse('');
@@ -93,37 +98,24 @@ export default function EngineContainer({ config }: { config: ExperimentConfig }
             });
             const responseText = await res.text();
             if (!res.ok) {
-                try {
-                    const errorJson = JSON.parse(responseText);
-                    throw new Error(errorJson.error || 'An unknown API error occurred.');
-                } catch {
-                    throw new Error(responseText);
-                }
+                const errorJson = JSON.parse(responseText);
+                throw new Error(errorJson.error || 'An unknown API error occurred.');
             }
             const json = JSON.parse(responseText);
             const aiContent = json.choices?.[0]?.message?.content;
             setResponse(aiContent || '(The AI returned an empty response)');
         } catch (err: any) {
-            console.error("Error in handleCastSpell:", err);
-            setError(err.message || 'An unexpected error occurred. Check the console for details.');
+            setError(err.message || 'An unexpected error occurred.');
         } finally {
             setLoading(false);
         }
     };
 
-    const isPromptReady = !!(rawPrompt.trim() || directive.trim());
-
     return (
         <Box maxW="800px" mx="auto" p={{ base: 4, md: 6 }} bg="white" borderRadius="lg" boxShadow="xl">
-            {/* --- NEW --- 
-                We now render the ExperimentForm component at the top,
-                passing it the configuration for the current experiment.
-            */}
             <ExperimentForm config={config} />
-
             <Divider my={6} />
 
-            {/* The interactive engine form follows */}
             <Stack spacing={4}>
                 <FormControl>
                     <FormLabel fontWeight="bold">LLM Model</FormLabel>
@@ -132,41 +124,77 @@ export default function EngineContainer({ config }: { config: ExperimentConfig }
                     </Select>
                 </FormControl>
 
-                <FormControl>
-                    <FormLabel>Raw Prompt (Overrides all fields below)</FormLabel>
-                    <Textarea
-                        placeholder="Paste a complete, pre-written prompt here."
-                        value={rawPrompt}
-                        onChange={(e) => setRawPrompt(e.target.value)}
-                        bg="gray.50"
-                        rows={5}
-                    />
-                </FormControl>
-
-                <FormControl isDisabled={!!rawPrompt.trim()}>
-                    <FormLabel>Directive (The main command)</FormLabel>
-                    <Input placeholder="e.g., Summarize the following text into three key points." value={directive} onChange={(e) => setDirective(e.target.value)} />
-                </FormControl>
-
-                <FormControl isDisabled={!!rawPrompt.trim()}>
-                    <FormLabel>Role (Optional)</FormLabel>
-                    <Input placeholder="e.g., An expert financial analyst" value={role} onChange={(e) => setRole(e.target.value)} />
-                </FormControl>
-
-                <FormControl isDisabled={!!rawPrompt.trim()}>
-                    <FormLabel>Additional Context (Optional)</FormLabel>
-                    <Textarea placeholder="The text to be summarized goes here..." value={context} onChange={(e) => setContext(e.target.value)} />
-                </FormControl>
-
-                <FormControl isDisabled={!!rawPrompt.trim()}>
-                    <FormLabel>Example (Optional)</FormLabel>
-                    <Textarea placeholder="Input: [Text about cats]. Output: [Summary about cats]." value={example} onChange={(e) => setExample(e.target.value)} />
-                </FormControl>
-
-                <FormControl isDisabled={!!rawPrompt.trim()}>
-                    <FormLabel>Output Format (Optional)</FormLabel>
-                    <Input placeholder="e.g., A JSON object with 'summary' and 'tags' keys" value={outputFormat} onChange={(e) => setOutputFormat(e.target.value)} />
-                </FormControl>
+                <Tabs index={tabIndex} onChange={(index) => setTabIndex(index)} variant="soft-rounded" colorScheme="purple">
+                    <TabList mb={4}>
+                        <Tab>Structured Builder</Tab>
+                        <Tab>Raw Editor</Tab>
+                    </TabList>
+                    <TabPanels>
+                        <TabPanel p={0}>
+                            <Stack spacing={4}>
+                                <FormControl>
+                                    <FormLabel display="flex" alignItems="center">
+                                        Directive (The main command)
+                                        <Tooltip label="A clear, direct verb or instruction for the AI. What do you want it to DO?" placement="top">
+                                            <Icon as={QuestionOutlineIcon} ml={2} color="gray.500" />
+                                        </Tooltip>
+                                    </FormLabel>
+                                    <Input placeholder="e.g., Summarize, rewrite, extract, compare..." value={directive} onChange={(e) => setDirective(e.target.value)} />
+                                </FormControl>
+                                <FormControl>
+                                    <FormLabel display="flex" alignItems="center">
+                                        Role (Optional)
+                                        <Tooltip label="Tell the AI who it should be. This focuses its knowledge and sets its tone. e.g., 'an expert copywriter', 'a helpful assistant for a 5th grader'." placement="top">
+                                            <Icon as={QuestionOutlineIcon} ml={2} color="gray.500" />
+                                        </Tooltip>
+                                    </FormLabel>
+                                    <Input placeholder="e.g., An expert financial analyst" value={role} onChange={(e) => setRole(e.target.value)} />
+                                </FormControl>
+                                <FormControl>
+                                    <FormLabel display="flex" alignItems="center">
+                                        Additional Context (Optional)
+                                        <Tooltip label="The primary text, data, or information you want the AI to work with. Paste your article, email, code, etc. here." placement="top">
+                                            <Icon as={QuestionOutlineIcon} ml={2} color="gray.500" />
+                                        </Tooltip>
+                                    </FormLabel>
+                                    <Textarea placeholder="The text to be summarized goes here..." value={context} onChange={(e) => setContext(e.target.value)} />
+                                </FormControl>
+                                <FormControl>
+                                    <FormLabel display="flex" alignItems="center">
+                                        Example (Optional)
+                                        <Tooltip label="Show, don't just tell. Providing a clear 'Input -> Output' example is one of the best ways to get the AI to follow your desired format." placement="top">
+                                            <Icon as={QuestionOutlineIcon} ml={2} color="gray.500" />
+                                        </Tooltip>
+                                    </FormLabel>
+                                    <Textarea placeholder="Input: [Text about cats]. Output: [Summary about cats]." value={example} onChange={(e) => setExample(e.target.value)} />
+                                </FormControl>
+                                <FormControl>
+                                    <FormLabel display="flex" alignItems="center">
+                                        Output Format (Optional)
+                                        <Tooltip label="Explicitly tell the AI how to structure its response. e.g., 'a JSON object', 'a markdown table', 'three bullet points'." placement="top">
+                                            <Icon as={QuestionOutlineIcon} ml={2} color="gray.500" />
+                                        </Tooltip>
+                                    </FormLabel>
+                                    <Input placeholder="e.g., A JSON object with 'summary' and 'tags' keys" value={outputFormat} onChange={(e) => setOutputFormat(e.target.value)} />
+                                </FormControl>
+                                <Button onClick={handleConvertToRaw} variant="link" colorScheme="purple" size="sm" alignSelf="flex-start">
+                                    ↓ Convert to Raw Prompt
+                                </Button>
+                            </Stack>
+                        </TabPanel>
+                        <TabPanel p={0}>
+                            <FormControl>
+                                <FormLabel>Raw Prompt</FormLabel>
+                                <Textarea
+                                    placeholder="Paste a complete prompt here..."
+                                    value={rawPrompt}
+                                    onChange={(e) => setRawPrompt(e.target.value)}
+                                    rows={15}
+                                />
+                            </FormControl>
+                        </TabPanel>
+                    </TabPanels>
+                </Tabs>
 
                 <Button onClick={handlePreview} variant="outline" colorScheme="gray">
                     Preview Full Prompt
@@ -179,7 +207,7 @@ export default function EngineContainer({ config }: { config: ExperimentConfig }
                     </Box>
                 )}
 
-                <Button colorScheme="purple" onClick={handleCastSpell} isDisabled={!isPromptReady || !apiKey || loading} size="lg">
+                <Button colorScheme="purple" onClick={handleCastSpell} isDisabled={!apiKey || loading} size="lg">
                     {loading ? <Spinner size="sm" /> : 'Run Experiment ✨'}
                 </Button>
 
