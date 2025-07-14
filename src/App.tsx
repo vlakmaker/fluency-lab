@@ -5,6 +5,7 @@ import LabPage from './pages/LabPage';
 import AgentCollaborationPage from './pages/AgentCollaborationPage';
 import CrossDomainReframingPage from './pages/CrossDomainReframingPage';
 import EthicalPromptingPage from './pages/EthicalPromptingPage';
+import HelpPage from './pages/HelpPage';
 import InsightSynthesisPage from './pages/InsightSynthesisPage';
 import WorkflowAutomationPage from './pages/WorkflowAutomationPage';
 
@@ -18,6 +19,7 @@ function App() {
             <Route path="/lab/cross-domain-reframing" element={<CrossDomainReframingPage />} />
             <Route path="/lab/agent-collaboration" element={<AgentCollaborationPage />} />
             <Route path="/lab/ethical-prompting" element={<EthicalPromptingPage />} />
+            <Route path="/help" element={<HelpPage />} />
         </Routes>
     );
 }
