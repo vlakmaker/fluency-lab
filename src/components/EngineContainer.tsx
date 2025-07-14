@@ -18,6 +18,9 @@ import { useEffect, useState } from 'react';
 import ExperimentForm from '../configs//ExperimentForm';
 import { useApiKey } from '../context/ApiKeyContext';
 import type { ExperimentConfig } from '../data/experiments';
+// --- THIS IS THE FIX: The missing import is now added ---
+import { callFeedbackEngine, FeedbackResult } from '../lib/feedbackEngine';
+import FeedbackDisplay from './FeedbackDisplay';
 
 // --- UPDATED: Corrected model IDs and better model selection ---
 const MODEL_OPTIONS = [
@@ -42,65 +45,44 @@ export default function EngineContainer({ config }: { config: ExperimentConfig }
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
+    const [feedbackLoading, setFeedbackLoading] = useState(false);
+    const [feedbackError, setFeedbackError] = useState('');
+    const [feedbackResult, setFeedbackResult] = useState<FeedbackResult | null>(null);
+
     useEffect(() => {
-        if (config && config.defaultPrompt) {
-            setRawPrompt(config.defaultPrompt);
-            // Default to the Raw Editor if there's a pre-filled prompt
-            setTabIndex(1);
-        } else {
-            // Default to the Structured Builder for a blank slate
-            setTabIndex(0);
-        }
+        if (config?.defaultPrompt) { setRawPrompt(config.defaultPrompt); setTabIndex(1); }
+        else { setTabIndex(0); }
     }, [config]);
 
     const buildStructuredPrompt = () => {
-        const parts = [
-            role && `Act as ${role}.`,
-            directive,
-            context && `Use the following context:\n${context}`,
-            example && `Follow this example:\n${example}`,
-            outputFormat && `Provide the output in this format:\n${outputFormat}`
-        ].filter(Boolean);
+        const parts = [role && `Act as ${role}.`, directive, context && `Use the following context:\n${context}`, example && `Follow this example:\n${example}`, outputFormat && `Provide the output in this format:\n${outputFormat}`].filter(Boolean);
         return parts.join('\n\n');
     };
 
-    const handleConvertToRaw = () => {
-        const structuredPrompt = buildStructuredPrompt();
-        setRawPrompt(structuredPrompt);
-        setTabIndex(1);
-    };
+    const handleConvertToRaw = () => { setRawPrompt(buildStructuredPrompt()); setTabIndex(1); };
+    const handlePreview = () => { setPreview(tabIndex === 0 ? buildStructuredPrompt() : rawPrompt); };
 
-    const handlePreview = () => {
-        const promptToPreview = tabIndex === 0 ? buildStructuredPrompt() : rawPrompt;
-        setPreview(promptToPreview);
+    const handleGetFeedback = async () => {
+        if (!apiKey) { setFeedbackError('API key is required to get feedback.'); return; }
+        setFeedbackLoading(true); setFeedbackError(''); setFeedbackResult(null);
+        try {
+            const result = await callFeedbackEngine({ directive, role, example, outputFormat, context, apiKey, model: selectedModel });
+            setFeedbackResult(result);
+        } catch (err: any) {
+            setFeedbackError(err.message || 'Failed to get feedback.');
+        } finally {
+            setFeedbackLoading(false);
+        }
     };
 
     const handleCastSpell = async () => {
         const prompt = tabIndex === 0 ? buildStructuredPrompt() : rawPrompt;
-
-        if (!apiKey) {
-            setError('API key is not set. Please provide it in the settings sidebar.');
-            return;
-        }
-        if (!prompt) {
-            setError('Prompt is empty. Please fill out the form or enter a raw prompt.');
-            return;
-        }
-
-        setLoading(true);
-        setError('');
-        setResponse('');
+        if (!apiKey || !prompt) { setError(!apiKey ? 'API key is not set.' : 'Prompt is empty.'); return; }
+        setLoading(true); setError(''); setResponse('');
         try {
-            const res = await fetch('/api/generate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-                body: JSON.stringify({ prompt, model: selectedModel })
-            });
+            const res = await fetch('/api/generate', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` }, body: JSON.stringify({ prompt, model: selectedModel }) });
             const responseText = await res.text();
-            if (!res.ok) {
-                const errorJson = JSON.parse(responseText);
-                throw new Error(errorJson.error || 'An unknown API error occurred.');
-            }
+            if (!res.ok) { const errorJson = JSON.parse(responseText); throw new Error(errorJson.error || 'An unknown API error occurred.'); }
             const json = JSON.parse(responseText);
             const aiContent = json.choices?.[0]?.message?.content;
             setResponse(aiContent || '(The AI returned an empty response)');
@@ -132,98 +114,38 @@ export default function EngineContainer({ config }: { config: ExperimentConfig }
                     <TabPanels>
                         <TabPanel p={0}>
                             <Stack spacing={4}>
-                                <FormControl>
-                                    <FormLabel display="flex" alignItems="center">
-                                        Directive (The main command)
-                                        <Tooltip label="A clear, direct verb or instruction for the AI. What do you want it to DO?" placement="top">
-                                            <Icon as={QuestionOutlineIcon} ml={2} color="gray.500" />
-                                        </Tooltip>
-                                    </FormLabel>
-                                    <Input placeholder="e.g., Summarize, rewrite, extract, compare..." value={directive} onChange={(e) => setDirective(e.target.value)} />
-                                </FormControl>
-                                <FormControl>
-                                    <FormLabel display="flex" alignItems="center">
-                                        Role (Optional)
-                                        <Tooltip label="Tell the AI who it should be. This focuses its knowledge and sets its tone. e.g., 'an expert copywriter', 'a helpful assistant for a 5th grader'." placement="top">
-                                            <Icon as={QuestionOutlineIcon} ml={2} color="gray.500" />
-                                        </Tooltip>
-                                    </FormLabel>
-                                    <Input placeholder="e.g., An expert financial analyst" value={role} onChange={(e) => setRole(e.target.value)} />
-                                </FormControl>
-                                <FormControl>
-                                    <FormLabel display="flex" alignItems="center">
-                                        Additional Context (Optional)
-                                        <Tooltip label="The primary text, data, or information you want the AI to work with. Paste your article, email, code, etc. here." placement="top">
-                                            <Icon as={QuestionOutlineIcon} ml={2} color="gray.500" />
-                                        </Tooltip>
-                                    </FormLabel>
-                                    <Textarea placeholder="The text to be summarized goes here..." value={context} onChange={(e) => setContext(e.target.value)} />
-                                </FormControl>
-                                <FormControl>
-                                    <FormLabel display="flex" alignItems="center">
-                                        Example (Optional)
-                                        <Tooltip label="Show, don't just tell. Providing a clear 'Input -> Output' example is one of the best ways to get the AI to follow your desired format." placement="top">
-                                            <Icon as={QuestionOutlineIcon} ml={2} color="gray.500" />
-                                        </Tooltip>
-                                    </FormLabel>
-                                    <Textarea placeholder="Input: [Text about cats]. Output: [Summary about cats]." value={example} onChange={(e) => setExample(e.target.value)} />
-                                </FormControl>
-                                <FormControl>
-                                    <FormLabel display="flex" alignItems="center">
-                                        Output Format (Optional)
-                                        <Tooltip label="Explicitly tell the AI how to structure its response. e.g., 'a JSON object', 'a markdown table', 'three bullet points'." placement="top">
-                                            <Icon as={QuestionOutlineIcon} ml={2} color="gray.500" />
-                                        </Tooltip>
-                                    </FormLabel>
-                                    <Input placeholder="e.g., A JSON object with 'summary' and 'tags' keys" value={outputFormat} onChange={(e) => setOutputFormat(e.target.value)} />
-                                </FormControl>
-                                <Button onClick={handleConvertToRaw} variant="link" colorScheme="purple" size="sm" alignSelf="flex-start">
-                                    ↓ Convert to Raw Prompt
-                                </Button>
+                                <FormControl> <FormLabel display="flex" alignItems="center"> Directive (The main command) <Tooltip label="A clear, direct verb or instruction for the AI. What do you want it to DO?" placement="top"> <Icon as={QuestionOutlineIcon} ml={2} color="gray.500" /> </Tooltip> </FormLabel> <Input placeholder="e.g., Summarize, rewrite, extract..." value={directive} onChange={(e) => setDirective(e.target.value)} /> </FormControl>
+                                <FormControl> <FormLabel display="flex" alignItems="center"> Role (Optional) <Tooltip label="Tell the AI who it should be. This focuses its knowledge and sets its tone." placement="top"> <Icon as={QuestionOutlineIcon} ml={2} color="gray.500" /> </Tooltip> </FormLabel> <Input placeholder="e.g., An expert financial analyst" value={role} onChange={(e) => setRole(e.target.value)} /> </FormControl>
+                                <FormControl> <FormLabel display="flex" alignItems="center"> Additional Context (Optional) <Tooltip label="The primary text, data, or information you want the AI to work with." placement="top"> <Icon as={QuestionOutlineIcon} ml={2} color="gray.500" /> </Tooltip> </FormLabel> <Textarea placeholder="The text to be summarized goes here..." value={context} onChange={(e) => setContext(e.target.value)} /> </FormControl>
+                                <FormControl> <FormLabel display="flex" alignItems="center"> Example (Optional) <Tooltip label="Show, don't just tell. Providing a clear 'Input -> Output' example is the best way to get the AI to follow your format." placement="top"> <Icon as={QuestionOutlineIcon} ml={2} color="gray.500" /> </Tooltip> </FormLabel> <Textarea placeholder="Input: [Text]. Output: [Summary]." value={example} onChange={(e) => setExample(e.target.value)} /> </FormControl>
+                                <FormControl> <FormLabel display="flex" alignItems="center"> Output Format (Optional) <Tooltip label="Explicitly tell the AI how to structure its response." placement="top"> <Icon as={QuestionOutlineIcon} ml={2} color="gray.500" /> </Tooltip> </FormLabel> <Input placeholder="e.g., A JSON object with 'summary' and 'tags' keys" value={outputFormat} onChange={(e) => setOutputFormat(e.target.value)} /> </FormControl>
+                                <Button onClick={handleConvertToRaw} variant="link" colorScheme="purple" size="sm" alignSelf="flex-start"> ↓ Convert to Raw Prompt </Button>
                             </Stack>
                         </TabPanel>
                         <TabPanel p={0}>
-                            <FormControl>
-                                <FormLabel>Raw Prompt</FormLabel>
-                                <Textarea
-                                    placeholder="Paste a complete prompt here..."
-                                    value={rawPrompt}
-                                    onChange={(e) => setRawPrompt(e.target.value)}
-                                    rows={15}
-                                />
-                            </FormControl>
+                            <FormControl> <FormLabel>Raw Prompt</FormLabel> <Textarea placeholder="Paste a complete prompt here..." value={rawPrompt} onChange={(e) => setRawPrompt(e.target.value)} rows={15} /> </FormControl>
                         </TabPanel>
                     </TabPanels>
                 </Tabs>
 
-                <Button onClick={handlePreview} variant="outline" colorScheme="gray">
-                    Preview Full Prompt
-                </Button>
-
-                {preview && (
-                    <Box p={4} bg="gray.50" borderRadius="md" whiteSpace="pre-wrap" border="1px solid" borderColor="gray.200">
-                        <Text fontWeight="bold" mb={2}>Prompt Preview:</Text>
-                        <Text as="pre" fontFamily="monospace" fontSize="sm">{preview}</Text>
+                {tabIndex === 0 && (
+                    <Box pt={2}>
+                        <Button onClick={handleGetFeedback} isLoading={feedbackLoading} loadingText="Analyzing..." colorScheme="blue" variant="outline" w="full"> Get Prompt Feedback 🧠 </Button>
+                        {feedbackError && (<Alert status="error" mt={4} borderRadius="md"> <AlertIcon /> {feedbackError} </Alert>)}
+                        {feedbackResult && <FeedbackDisplay result={feedbackResult} />}
                     </Box>
                 )}
 
-                <Button colorScheme="purple" onClick={handleCastSpell} isDisabled={!apiKey || loading} size="lg">
-                    {loading ? <Spinner size="sm" /> : 'Run Experiment ✨'}
-                </Button>
+                <Divider />
 
-                {error && (
-                    <Alert status="error" borderRadius="md">
-                        <AlertIcon />
-                        {error}
-                    </Alert>
-                )}
+                <Button onClick={handlePreview} variant="outline" colorScheme="gray"> Preview Full Prompt </Button>
 
-                {response && (
-                    <Box mt={4} p={4} bg="purple.50" borderRadius="md" whiteSpace="pre-wrap" border="1px solid" borderColor="purple.200">
-                        <Text fontWeight="bold" mb={2}>AI Response:</Text>
-                        <Text>{response}</Text>
-                    </Box>
-                )}
+                {preview && (<Box p={4} bg="gray.50" borderRadius="md" whiteSpace="pre-wrap" border="1px solid" borderColor="gray.200"> <Text fontWeight="bold" mb={2}>Prompt Preview:</Text> <Text as="pre" fontFamily="monospace" fontSize="sm">{preview}</Text> </Box>)}
+
+                <Button colorScheme="purple" onClick={handleCastSpell} isDisabled={!apiKey || loading} size="lg"> {loading ? <Spinner size="sm" /> : 'Run Experiment ✨'} </Button>
+
+                {error && (<Alert status="error" borderRadius="md"> <AlertIcon /> {error} </Alert>)}
+                {response && (<Box mt={4} p={4} bg="purple.50" borderRadius="md" whiteSpace="pre-wrap" border="1px solid" borderColor="purple.200"> <Text fontWeight="bold" mb={2}>AI Response:</Text> <Text>{response}</Text> </Box>)}
             </Stack>
         </Box>
     );
