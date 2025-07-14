@@ -3,12 +3,14 @@
 import { debugLog } from "../utils/debug";
 import { callLLM } from "./callLLM";
 
+// --- UPDATED: The request can now optionally include a rawPrompt ---
 export type FeedbackRequest = {
-    directive: string;
-    role: string;
+    directive?: string;
+    role?: string;
     example?: string;
     outputFormat?: string;
     context?: string;
+    rawPrompt?: string; // This is the new field
     apiKey: string;
     model: string;
 };
@@ -25,86 +27,90 @@ export type FeedbackResult = {
     };
 };
 
-export async function callFeedbackEngine({
-    directive,
-    role,
-    example = "",
-    outputFormat = "",
-    context = "",
-    apiKey,
-    model,
-}: FeedbackRequest): Promise<FeedbackResult> {
-    const evaluationPrompt = `
-You are an expert AI prompt engineer and a helpful mentor for the Generalist World community.
-Your task is to review the structure of a user's prompt and provide clear, constructive advice.
+export async function callFeedbackEngine(request: FeedbackRequest): Promise<FeedbackResult> {
+    let evaluationPrompt = "";
 
-The user provided this prompt draft:
-- Role: ${role || "Not provided"}
-- Directive: ${directive || "Not provided"}
-- Example: ${example || "None"}
-- Output Format: ${outputFormat || "None"}
-- Additional Context: ${context || "None"}
+    // --- NEW: Logic to choose the correct meta-prompt ---
+    if (request.rawPrompt) {
+        // SCENARIO 1: We have a raw prompt. Ask the AI to deconstruct AND review.
+        evaluationPrompt = `
+You are an expert AI prompt engineer. Your task is to analyze and deconstruct a user's raw prompt, then provide feedback.
 
-Follow these steps:
-1. Briefly evaluate each section.
-2. Give a final score out of 10 based on clarity and effectiveness.
-3. Provide one specific, actionable tip for improvement.
+THE USER'S RAW PROMPT:
+"""
+${request.rawPrompt}
+"""
 
-Respond in this exact JSON format. IMPORTANT: You MUST include all keys in the "review" object. Do not include any text or markdown formatting outside of the JSON object.
+YOUR STEPS:
+1. First, deconstruct the raw prompt into its core components: Role, Directive, Context, Example, and Output Format. If a component is not present, state that.
+2. After deconstructing, briefly evaluate each component you found.
+3. Give a final score out of 10 based on the overall prompt's clarity and effectiveness.
+4. Provide one specific, actionable tip for improvement.
+
+Respond in this exact JSON format. IMPORTANT: You MUST include all keys.
 
 {
   "review": {
-    "role": "<comment on role>",
-    "directive": "<comment on directive>",
-    "example": "<comment on example>",
-    "format": "<comment on format>",
-    "context": "<comment on context>"
+    "role": "<comment on the role you identified>",
+    "directive": "<comment on the directive you identified>",
+    "example": "<comment on the example you identified>",
+    "format": "<comment on the output format you identified>",
+    "context": "<comment on the context you identified>"
   },
   "score": <score_integer>,
   "tip": "<one specific, actionable suggestion>"
 }
 `.trim();
+    } else {
+        // SCENARIO 2: We have structured fields. Use the original review prompt.
+        evaluationPrompt = `
+You are an expert AI prompt engineer and a helpful mentor. Your task is to review the structure of a user's prompt and provide constructive advice.
+
+The user provided this draft:
+- Role: ${request.role || "Not provided"}
+- Directive: ${request.directive || "Not provided"}
+- Example: ${request.example || "None"}
+- Output Format: ${request.outputFormat || "None"}
+- Additional Context: ${request.context || "None"}
+
+Follow these steps:
+1. Briefly evaluate each section.
+2. Give a final score out of 10.
+3. Provide one specific, actionable tip.
+
+Respond in this exact JSON format. IMPORTANT: You MUST include all keys in the "review" object.
+
+{
+  "review": { "role": "<comment>", "directive": "<comment>", "example": "<comment>", "format": "<comment>", "context": "<comment>" },
+  "score": <score_integer>,
+  "tip": "<one specific, actionable suggestion>"
+}
+`.trim();
+    }
 
     const response = await callLLM({
         prompt: evaluationPrompt,
-        apiKey,
-        model,
+        apiKey: request.apiKey,
+        model: request.model,
     });
 
     debugLog("🧠 Raw feedback response:", response);
 
+    // The robust parsing logic remains the same and will work for both scenarios.
     try {
-        // --- NEW ROBUST JSON EXTRACTION LOGIC ---
-        // Advanced models often wrap JSON in markdown. This regex finds the JSON block.
         const jsonMatch = response.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) {
-            throw new Error("No valid JSON object found in the AI's response.");
-        }
-        const jsonString = jsonMatch[0];
-        // --- END OF NEW LOGIC ---
+        if (!jsonMatch) throw new Error("No valid JSON object found in the AI's response.");
 
-        const parsedResponse = JSON.parse(jsonString); // We now parse the cleaned string
+        const jsonString = jsonMatch[0];
+        const parsedResponse = JSON.parse(jsonString);
         const { review, score, tip } = parsedResponse;
 
-        if (score === undefined || !tip) {
-            throw new Error("Missing score or tip in feedback JSON.");
-        }
+        if (score === undefined || !tip) throw new Error("Missing score or tip in feedback JSON.");
 
-        const defaultSections = {
-            role: "Not reviewed.",
-            directive: "Not reviewed.",
-            example: "Not reviewed.",
-            format: "Not reviewed.",
-            context: "Not reviewed.",
-        };
-
+        const defaultSections = { role: "Not reviewed.", directive: "Not reviewed.", example: "Not reviewed.", format: "Not reviewed.", context: "Not reviewed." };
         const completeSections = { ...defaultSections, ...review };
 
-        return {
-            score: score,
-            tips: tip,
-            sections: completeSections,
-        };
+        return { score: score, tips: tip, sections: completeSections };
     } catch (e) {
         console.error("Failed to parse feedback JSON:", e);
         throw new Error("⚠️ Failed to get structured feedback from the AI. It might be busy or the response format changed.");

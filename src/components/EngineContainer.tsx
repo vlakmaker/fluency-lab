@@ -15,14 +15,12 @@ import {
     Tooltip
 } from '@chakra-ui/react';
 import { useEffect, useState } from 'react';
-import ExperimentForm from '../configs//ExperimentForm';
+import ExperimentForm from '../configs/ExperimentForm';
 import { useApiKey } from '../context/ApiKeyContext';
 import type { ExperimentConfig } from '../data/experiments';
-// --- THIS IS THE FIX: The missing import is now added ---
 import { callFeedbackEngine, FeedbackResult } from '../lib/feedbackEngine';
 import FeedbackDisplay from './FeedbackDisplay';
 
-// --- UPDATED: Corrected model IDs and better model selection ---
 const MODEL_OPTIONS = [
     { value: 'mistralai/mistral-7b-instruct', label: 'Mistral 7B Instruct' },
     { value: 'anthropic/claude-3-haiku', label: 'Anthropic Claude 3 Haiku (Fast & Capable)' },
@@ -44,7 +42,6 @@ export default function EngineContainer({ config }: { config: ExperimentConfig }
     const [response, setResponse] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
-
     const [feedbackLoading, setFeedbackLoading] = useState(false);
     const [feedbackError, setFeedbackError] = useState('');
     const [feedbackResult, setFeedbackResult] = useState<FeedbackResult | null>(null);
@@ -66,7 +63,11 @@ export default function EngineContainer({ config }: { config: ExperimentConfig }
         if (!apiKey) { setFeedbackError('API key is required to get feedback.'); return; }
         setFeedbackLoading(true); setFeedbackError(''); setFeedbackResult(null);
         try {
-            const result = await callFeedbackEngine({ directive, role, example, outputFormat, context, apiKey, model: selectedModel });
+            const result = await callFeedbackEngine(
+                tabIndex === 0
+                    ? { directive, role, example, outputFormat, context, apiKey, model: selectedModel }
+                    : { rawPrompt, apiKey, model: selectedModel }
+            );
             setFeedbackResult(result);
         } catch (err: any) {
             setFeedbackError(err.message || 'Failed to get feedback.');
@@ -97,7 +98,6 @@ export default function EngineContainer({ config }: { config: ExperimentConfig }
         <Box maxW="800px" mx="auto" p={{ base: 4, md: 6 }} bg="white" borderRadius="lg" boxShadow="xl">
             <ExperimentForm config={config} />
             <Divider my={6} />
-
             <Stack spacing={4}>
                 <FormControl>
                     <FormLabel fontWeight="bold">LLM Model</FormLabel>
@@ -105,7 +105,6 @@ export default function EngineContainer({ config }: { config: ExperimentConfig }
                         {MODEL_OPTIONS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                     </Select>
                 </FormControl>
-
                 <Tabs index={tabIndex} onChange={(index) => setTabIndex(index)} variant="soft-rounded" colorScheme="purple">
                     <TabList mb={4}>
                         <Tab>Structured Builder</Tab>
@@ -127,23 +126,15 @@ export default function EngineContainer({ config }: { config: ExperimentConfig }
                         </TabPanel>
                     </TabPanels>
                 </Tabs>
-
-                {tabIndex === 0 && (
-                    <Box pt={2}>
-                        <Button onClick={handleGetFeedback} isLoading={feedbackLoading} loadingText="Analyzing..." colorScheme="blue" variant="outline" w="full"> Get Prompt Feedback 🧠 </Button>
-                        {feedbackError && (<Alert status="error" mt={4} borderRadius="md"> <AlertIcon /> {feedbackError} </Alert>)}
-                        {feedbackResult && <FeedbackDisplay result={feedbackResult} />}
-                    </Box>
-                )}
-
+                <Box pt={2}>
+                    <Button onClick={handleGetFeedback} isLoading={feedbackLoading} loadingText="Analyzing..." colorScheme="blue" variant="outline" w="full"> Get Prompt Feedback 🧠 </Button>
+                    {feedbackError && (<Alert status="error" mt={4} borderRadius="md"> <AlertIcon /> {feedbackError} </Alert>)}
+                    {feedbackResult && <FeedbackDisplay result={feedbackResult} />}
+                </Box>
                 <Divider />
-
                 <Button onClick={handlePreview} variant="outline" colorScheme="gray"> Preview Full Prompt </Button>
-
                 {preview && (<Box p={4} bg="gray.50" borderRadius="md" whiteSpace="pre-wrap" border="1px solid" borderColor="gray.200"> <Text fontWeight="bold" mb={2}>Prompt Preview:</Text> <Text as="pre" fontFamily="monospace" fontSize="sm">{preview}</Text> </Box>)}
-
                 <Button colorScheme="purple" onClick={handleCastSpell} isDisabled={!apiKey || loading} size="lg"> {loading ? <Spinner size="sm" /> : 'Run Experiment ✨'} </Button>
-
                 {error && (<Alert status="error" borderRadius="md"> <AlertIcon /> {error} </Alert>)}
                 {response && (<Box mt={4} p={4} bg="purple.50" borderRadius="md" whiteSpace="pre-wrap" border="1px solid" borderColor="purple.200"> <Text fontWeight="bold" mb={2}>AI Response:</Text> <Text>{response}</Text> </Box>)}
             </Stack>
