@@ -1,3 +1,5 @@
+// src/components/EngineContainer.tsx
+
 import {
     Alert,
     AlertIcon,
@@ -6,7 +8,6 @@ import {
     Divider,
     FormControl,
     FormLabel,
-    Heading,
     Input,
     Select,
     Spinner,
@@ -14,9 +15,12 @@ import {
     Text,
     Textarea
 } from '@chakra-ui/react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import ExperimentForm from '../configs/ExperimentForm'; // Import the component to display challenges
 import { useApiKey } from '../context/ApiKeyContext';
+import type { ExperimentConfig } from '../data/experiments'; // Import the type for our config
 
+// The list of models remains the same
 const MODEL_OPTIONS = [
     { value: 'mistralai/mistral-7b-instruct', label: 'Mistral 7B Instruct (Recommended)' },
     { value: 'openai/gpt-3.5-turbo', label: 'OpenAI GPT-3.5 Turbo' },
@@ -24,7 +28,12 @@ const MODEL_OPTIONS = [
     { value: 'anthropic/claude-2.1', label: 'Anthropic Claude 2.1' },
 ];
 
-export default function EngineContainer() {
+/**
+ * This is now the main component for the entire lab experience.
+ * It takes a `config` object to dynamically render the correct experiment.
+ */
+export default function EngineContainer({ config }: { config: ExperimentConfig }) {
+    // All existing state logic remains the same
     const { apiKey } = useApiKey();
     const [selectedModel, setSelectedModel] = useState(MODEL_OPTIONS[0].value);
     const [rawPrompt, setRawPrompt] = useState('');
@@ -38,6 +47,16 @@ export default function EngineContainer() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
+    // --- NEW ---
+    // This effect runs when the component loads or when the `config` prop changes.
+    // It automatically sets the default prompt for the selected experiment.
+    useEffect(() => {
+        if (config && config.defaultPrompt) {
+            setRawPrompt(config.defaultPrompt);
+        }
+    }, [config]); // The dependency array ensures this runs when the experiment changes
+
+    // The logic for building the prompt is unchanged
     const buildPrompt = () => {
         if (rawPrompt.trim()) return rawPrompt.trim();
         const parts = [
@@ -52,6 +71,7 @@ export default function EngineContainer() {
 
     const handlePreview = () => setPreview(buildPrompt());
 
+    // The logic for calling the API is unchanged
     const handleCastSpell = async () => {
         const prompt = buildPrompt();
         if (!apiKey) {
@@ -62,23 +82,16 @@ export default function EngineContainer() {
             setError('Prompt is empty. Please fill out the directive or raw prompt field.');
             return;
         }
-
         setLoading(true);
         setError('');
         setResponse('');
-
         try {
             const res = await fetch('/api/generate', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${apiKey}`
-                },
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
                 body: JSON.stringify({ prompt, model: selectedModel })
             });
-
             const responseText = await res.text();
-
             if (!res.ok) {
                 try {
                     const errorJson = JSON.parse(responseText);
@@ -87,11 +100,9 @@ export default function EngineContainer() {
                     throw new Error(responseText);
                 }
             }
-
             const json = JSON.parse(responseText);
             const aiContent = json.choices?.[0]?.message?.content;
             setResponse(aiContent || '(The AI returned an empty response)');
-
         } catch (err: any) {
             console.error("Error in handleCastSpell:", err);
             setError(err.message || 'An unexpected error occurred. Check the console for details.');
@@ -103,14 +114,16 @@ export default function EngineContainer() {
     const isPromptReady = !!(rawPrompt.trim() || directive.trim());
 
     return (
-        <Box maxW="800px" mx="auto" p={6} bg="white" borderRadius="lg" boxShadow="xl">
-            <Heading as="h2" size="lg" mb={4}>Fluency Lab Engine</Heading>
-            <Text mb={4} color="gray.600">
-                Craft a structured prompt using the fields below, or enter a complete prompt in the "Raw Prompt" box to override them.
-            </Text>
+        <Box maxW="800px" mx="auto" p={{ base: 4, md: 6 }} bg="white" borderRadius="lg" boxShadow="xl">
+            {/* --- NEW --- 
+                We now render the ExperimentForm component at the top,
+                passing it the configuration for the current experiment.
+            */}
+            <ExperimentForm config={config} />
 
             <Divider my={6} />
 
+            {/* The interactive engine form follows */}
             <Stack spacing={4}>
                 <FormControl>
                     <FormLabel fontWeight="bold">LLM Model</FormLabel>
